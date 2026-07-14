@@ -72,6 +72,29 @@ def login(sb, email, password):
         time.sleep(1)
 
     sb.save_screenshot("login_failed.png")
+    try:
+        with open("login_failed.html", "w", encoding="utf-8") as f:
+            f.write(sb.get_page_source())
+        print("📄 已保存失败页面 HTML: login_failed.html")
+    except Exception as e:
+        print(f"⚠️ 保存页面 HTML 失败: {e}")
+
+    # 尝试抓取页面上可能出现的错误提示文字（如"账号或密码错误"之类的 toast/alert）
+    try:
+        for xp in [
+            '//*[contains(@class, "error")]',
+            '//*[contains(@class, "toast")]',
+            '//*[contains(@class, "alert")]',
+            '//*[contains(@role, "alert")]',
+        ]:
+            elems = sb.find_elements(xp)
+            for elem in elems:
+                txt = (elem.text or "").strip()
+                if txt:
+                    print(f"⚠️ 页面提示文字: {txt}")
+    except Exception:
+        pass
+
     print(f"❌ 登录超时，当前 URL: {sb.get_current_url()}")
     return False
 
@@ -132,9 +155,9 @@ def main():
 
     IS_PROXY = os.environ.get("IS_PROXY", "false").lower() == "true"
     proxy_str = os.environ.get("PROXY_SERVER", "").strip() or "http://127.0.0.1:1081"
-
     sb_kwargs = {"uc": True, "headless": False}
-    if IS_PROXY and proxy_str:
+
+    if IS_PROXY:
         print(f"🔗 挂载代理: {proxy_str}")
         sb_kwargs["proxy"] = proxy_str
     else:
@@ -148,8 +171,19 @@ def main():
         except Exception:
             print("⚠️ 获取 IP 失败，继续执行")
 
-        if not login(sb, EMAIL, PASSWORD):
-            msg = "❌ 登录失败，请检查账号或验证码"
+        MAX_LOGIN_ATTEMPTS = int(os.environ.get("MAX_LOGIN_ATTEMPTS", "3"))
+        login_ok = False
+        for attempt in range(1, MAX_LOGIN_ATTEMPTS + 1):
+            print(f"🔁 登录尝试 {attempt}/{MAX_LOGIN_ATTEMPTS}")
+            if login(sb, EMAIL, PASSWORD):
+                login_ok = True
+                break
+            if attempt < MAX_LOGIN_ATTEMPTS:
+                print("⏳ 等待 5 秒后重试...")
+                time.sleep(5)
+
+        if not login_ok:
+            msg = f"❌ 登录失败（已重试 {MAX_LOGIN_ATTEMPTS} 次），请检查账号或验证码"
             print(msg)
             send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
             return
@@ -157,7 +191,7 @@ def main():
         print("📄 导航到 Dashboard...")
         sb.open(DASH_URL)
         sb.wait_for_ready_state_complete()
-        time.sleep(3)
+        time.sleep(5)
 
         current_url = sb.get_current_url()
         current_title = sb.get_title() or ""
@@ -169,6 +203,13 @@ def main():
 
         time_text = get_remaining_time(sb)
         if not time_text:
+            sb.save_screenshot("dashboard_failed.png")
+            try:
+                with open("dashboard_failed.html", "w", encoding="utf-8") as f:
+                    f.write(sb.get_page_source())
+                print("📄 已保存 Dashboard 页面 HTML: dashboard_failed.html")
+            except Exception as e:
+                print(f"⚠️ 保存页面 HTML 失败: {e}")
             msg = "❌ 未找到剩余时间信息"
             print(msg)
             send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
@@ -185,6 +226,13 @@ def main():
 
         print("🔄 尝试点击延期按钮...")
         if not click_extend_button(sb):
+            sb.save_screenshot("extend_failed.png")
+            try:
+                with open("extend_failed.html", "w", encoding="utf-8") as f:
+                    f.write(sb.get_page_source())
+                print("📄 已保存延期失败页面 HTML: extend_failed.html")
+            except Exception as e:
+                print(f"⚠️ 保存页面 HTML 失败: {e}")
             msg = "❌ 未找到或无法点击延期按钮"
             print(msg)
             send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
