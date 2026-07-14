@@ -49,7 +49,23 @@ jobs:
       run: |
         xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
           python3 aida_renew.py
-        
+
+    # 5.1 若登录/读取剩余时间/延期失败，把当时的截图和页面 HTML 打包上传，方便排查（保留 3 天，自动覆盖旧的）
+    - name: 📸 上传失败截图与页面 HTML（如有）
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: login-debug
+        path: |
+          login_failed.png
+          login_failed.html
+          dashboard_failed.png
+          dashboard_failed.html
+          extend_failed.png
+          extend_failed.html
+        if-no-files-found: ignore
+        retention-days: 3
+
     # 6. 自动保持公库干净：只保留最新 1 次的运行日志
     - name: 🧹 清理旧的工作流运行记录
       if: always()
